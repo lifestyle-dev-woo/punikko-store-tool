@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>店舗数量計算ツール（生産管理表の店舗列・在庫判定）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F5F6F8; --surface:#FFFFFF; --ink:#1E2330; --muted:#5B6475; --line:#DCE0E7; --soft:#EEF0F4;
+  --accent:#C93D63; --accent-ink:#FFFFFF; --ok:#2F8F6B; --warn:#B26A00; --warn-bg:#FFF4E0; --err:#B42318; --err-bg:#FDECEA;
+  --c-own:#D9476E; --c-open:#E9A23B; --c-ip:#2F79A8; --c-buy:#8A93A5;
+  --focus:#2F79A8;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14171E; --surface:#1C2029; --ink:#E7EAF0; --muted:#A2A9B7; --line:#2E3443; --soft:#242936;
+    --accent:#F0698F; --accent-ink:#1C1014; --ok:#5CC49A; --warn:#F2B35A; --warn-bg:#33270F; --err:#F28B82; --err-bg:#3A1A18;
+    --c-own:#EE6A8F; --c-open:#F2B35A; --c-ip:#5AA6D6; --c-buy:#9AA3B5; --focus:#5AA6D6;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14171E; --surface:#1C2029; --ink:#E7EAF0; --muted:#A2A9B7; --line:#2E3443; --soft:#242936;
+  --accent:#F0698F; --accent-ink:#1C1014; --ok:#5CC49A; --warn:#F2B35A; --warn-bg:#33270F; --err:#F28B82; --err-bg:#3A1A18;
+  --c-own:#EE6A8F; --c-open:#F2B35A; --c-ip:#5AA6D6; --c-buy:#9AA3B5; --focus:#5AA6D6;
+  color-scheme: dark;
+}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans JP","Hiragino Sans","Yu Gothic UI","Meiryo",system-ui,sans-serif;font-size:15px;line-height:1.65}
+.wrap{max-width:1120px;margin:0 auto;padding:28px 20px 80px}
+h1,h2,h3{font-family:"M PLUS Rounded 1c","Hiragino Maru Gothic ProN","Noto Sans JP",sans-serif;line-height:1.3;margin:0}
+h1{font-size:28px;font-weight:800;letter-spacing:.01em}
+h2{font-size:20px;font-weight:800}
+h3{font-size:16px;font-weight:700}
+p{margin:.4em 0}
+.lead{color:var(--muted);max-width:72ch;margin-top:8px}
+header.top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;margin-bottom:28px}
+.status{font-size:13px;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block}
+.dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)}
+section.step{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px 22px 24px;margin-bottom:18px}
+.step-head{display:flex;gap:14px;align-items:baseline;margin-bottom:14px}
+.step-no{font-family:"M PLUS Rounded 1c",sans-serif;font-weight:800;font-size:15px;width:30px;height:30px;border-radius:50%;background:var(--ink);color:var(--surface);display:inline-flex;align-items:center;justify-content:center;flex:none;transform:translateY(4px)}
+.step-head p{color:var(--muted);font-size:14px;margin:2px 0 0}
+.sub{margin-top:22px}
+.sub h3{margin-bottom:8px}
+
+/* ratio bar — the one bold element */
+.ratio-bar{display:flex;height:58px;border-radius:12px;overflow:hidden;border:1px solid var(--line);margin:6px 0 12px}
+.ratio-seg{display:flex;flex-direction:column;justify-content:center;padding:0 12px;min-width:0;color:#fff;font-weight:700;white-space:nowrap;overflow:hidden;transition:flex-basis .25s ease}
+.ratio-seg span{font-size:12px;font-weight:500;opacity:.92}
+.ratio-seg b{font-family:"M PLUS Rounded 1c",sans-serif;font-size:20px;line-height:1.1}
+.seg-own{background:var(--c-own)} .seg-open{background:var(--c-open);color:#2B1C00} .seg-ip{background:var(--c-ip)} .seg-buy{background:var(--c-buy)}
+.ratio-inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.ratio-inputs label{display:flex;flex-direction:column;font-size:13px;color:var(--muted);gap:4px}
+.ratio-inputs .key{display:flex;align-items:center;gap:6px;color:var(--ink);font-weight:500}
+.swatch{width:10px;height:10px;border-radius:3px;display:inline-block}
+.sum-note{font-size:13px;margin-top:8px}
+.sum-note.bad{color:var(--err)}
+
+input[type=number],input[type=text],select{font:inherit;font-size:14px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;min-width:0}
+input[type=number]{text-align:right;font-variant-numeric:tabular-nums}
+input:focus-visible,select:focus-visible,button:focus-visible,summary:focus-visible,.drop:focus-within{outline:2px solid var(--focus);outline-offset:2px}
+button{font:inherit;font-size:14px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:8px 14px;cursor:pointer}
+button:hover{background:var(--soft)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+button.primary:hover{filter:brightness(1.05);background:var(--accent)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.link{border:none;background:none;color:var(--c-ip);padding:4px 6px}
+.row-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px}
+
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;max-width:100%}
+table{border-collapse:collapse;width:100%;font-size:13.5px;font-variant-numeric:tabular-nums}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{background:var(--soft);font-weight:700;font-size:12.5px;color:var(--muted);position:sticky;top:0;z-index:1}
+td.num,th.num{text-align:right}
+tr:last-child td{border-bottom:none}
+tfoot td{font-weight:700;background:var(--soft)}
+.budget td{padding:3px 6px}.budget input{padding:4px 6px;font-size:13.5px}.budget input[type=number]{width:84px}
+.budget input[type=text]{width:220px}
+.master td{padding:3px 6px}.master input,.master select{padding:4px 6px;font-size:13px}.master input[type=text]{width:160px}
+.master input.jan{width:260px}
+.master input[type=number]{width:72px}
+.pos{color:var(--ok)} .neg{color:var(--err)}
+.cat-pill{display:inline-flex;align-items:center;gap:6px}
+
+.drops{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:14px}
+.drop{border:1.5px dashed var(--line);border-radius:12px;padding:16px;background:var(--bg);position:relative}
+.drop.loaded{border-style:solid;border-color:var(--ok)}
+.drop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.drop h3{margin-bottom:4px}
+.drop .hint{font-size:13px;color:var(--muted)}
+.drop .file{font-size:13px;margin-top:8px;word-break:break-all}
+.facts{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:13.5px;margin-top:10px}
+.facts b{font-variant-numeric:tabular-nums}
+
+.controls{display:flex;flex-wrap:wrap;gap:14px 22px;align-items:flex-end;margin-bottom:14px}
+.controls label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.total-line{font-size:14px;margin:4px 0 16px}
+.total-line b{font-family:"M PLUS Rounded 1c",sans-serif;font-size:22px}
+.msg{border-radius:10px;padding:10px 14px;font-size:13.5px;margin:10px 0}
+.msg.warn{background:var(--warn-bg);color:var(--ink);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent)}
+.msg.err{background:var(--err-bg);border:1px solid color-mix(in srgb,var(--err) 40%,transparent)}
+.msg ul{margin:4px 0 0 1.2em;padding:0}
+.empty{color:var(--muted);font-size:14px;padding:6px 0}
+details.adv{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 22px;margin-bottom:18px}
+details.adv summary{cursor:pointer;font-family:"M PLUS Rounded 1c",sans-serif;font-weight:700;font-size:16px}
+.help ol{padding-left:1.3em;margin:6px 0} .help li{margin:3px 0}
+.small{font-size:12.5px;color:var(--muted)}
+textarea{font:inherit;font-size:13px;width:100%;min-height:90px;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--surface);color:var(--ink)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+@media (max-width:640px){.wrap{padding:18px 12px 60px} h1{font-size:22px} section.step{padding:16px 14px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+.req{font-family:"Noto Sans JP",sans-serif;font-size:11px;font-weight:700;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:0 7px;margin-left:6px;vertical-align:2px}
+.drop.over{border-color:var(--c-ip)}
+.tbl-title{margin:18px 0 8px}
+.tbl-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;margin:22px 0 8px}
+.tbl-head .tbl-title{margin:0}
+label.check{flex-direction:row!important;align-items:center;gap:6px;color:var(--ink)!important;font-size:13.5px}
+.judge{display:inline-block;min-width:3.2em;text-align:center;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:700;border:1px solid var(--line);color:var(--muted)}
+.judge.j-ok{background:color-mix(in srgb,var(--ok) 14%,transparent);border-color:color-mix(in srgb,var(--ok) 45%,transparent);color:var(--ok)}
+.judge.j-ng{background:var(--err-bg);border-color:color-mix(in srgb,var(--err) 50%,transparent);color:var(--err)}
+.judge.j-prod{background:var(--soft);color:var(--muted)}
+td.jcell{text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>店舗数量計算ツール</h1>
+      <p class="lead">生産管理表（月間リピート・自社IP）の「店铺」列と、在庫から出す商品（仕入品など）の数量を、店舗の売上実績と区分比率から計算します。在庫表を取り込むと、在庫で足りるかどうかも判定します。</p>
+    </div>
+    <div class="status" aria-live="polite"><span class="dot" id="saveDot"></span><span id="saveState">読み込み中…</span></div>
+  </header>
+
+  <section class="step" aria-labelledby="h1s">
+    <div class="step-head"><span class="step-no">1</span><div><h2 id="h1s">区分比率と店舗予算を入力する</h2><p>社長指示の比率と、店舗ごとの月別売上予算（万円・税抜）を入れて「設定を保存」を押します。保存先はこのブラウザです。売上予算などはこのページには入っていないので、最初に共有された設定ファイルを読み込んでください。</p></div></div>
+
+    <h3>区分比率</h3>
+    <div class="ratio-bar" id="ratioBar" aria-hidden="true"></div>
+    <div class="ratio-inputs" id="ratioInputs"></div>
+    <p class="sum-note" id="ratioSum"></p>
+
+    <div class="sub">
+      <h3>店舗と年間予算（万円・税抜）</h3>
+      <div class="controls">
+        <label>予算の開始月<input type="month" id="startYm"></label>
+        <span class="small">12か月分を表示します。生産管理表の対象月と同じ月の予算合計が計算に使われます。</span>
+      </div>
+      <div class="tbl-wrap"><table class="budget" id="budgetTbl"></table></div>
+      <div class="row-actions">
+        <button type="button" id="addStore">店舗を追加</button>
+      </div>
+    </div>
+    <div class="row-actions">
+      <button type="button" class="primary" id="saveBtn">設定を保存</button>
+      <button type="button" id="exportBtn">設定ファイルを書き出す</button>
+      <button type="button" id="importBtn">設定ファイルを読み込む</button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+      <span class="small">設定ファイル（.json）には売上予算が入ります。社内（Lark など）だけで受け渡してください。</span>
+    </div>
+  </section>
+
+  <section class="step" aria-labelledby="h2s">
+    <div class="step-head"><span class="step-no">2</span><div><h2 id="h2s">CSVを取り込む</h2><p>ファイルを選ぶかドラッグします。書き出したままのCSVで大丈夫です。上の2つは必須、下の2つは仕入品の配分と在庫判定に使います。</p></div></div>
+    <div class="drops">
+      <div class="drop" id="dropSales">
+        <h3>スマレジ 商品別売上 <span class="req">必須</span></h3>
+        <p class="hint">直近1か月分。平均単価・スクイーズ比率・商品ごとの販売数に使います。</p>
+        <input type="file" accept=".csv,text/csv" id="fileSales" aria-label="スマレジ商品別売上CSVを選ぶ">
+        <div class="file" id="salesInfo">未選択</div>
+      </div>
+      <div class="drop" id="dropProd">
+        <h3>生産管理表（月間リピート・自社IP） <span class="req">必須</span></h3>
+        <p class="hint">「店铺」列がある月のブロックを計算します。</p>
+        <input type="file" accept=".csv,text/csv" id="fileProd" aria-label="生産管理表CSVを選ぶ">
+        <div class="file" id="prodInfo">未選択</div>
+      </div>
+      <div class="drop" id="dropMaster">
+        <h3>商品マスタ（Hobby Product Master）</h3>
+        <p class="hint">版権が「OEM商品」の行を仕入品の一覧として使います。</p>
+        <input type="file" accept=".csv,text/csv" id="fileMaster" aria-label="商品マスタCSVを選ぶ">
+        <div class="file" id="masterInfo">未選択</div>
+      </div>
+      <div class="drop" id="dropStock">
+        <h3>在庫表（ホビー在庫確保）</h3>
+        <p class="hint">商品ごとの出荷できる数で、在庫で足りるかを判定します。</p>
+        <input type="file" accept=".csv,text/csv" id="fileStock" aria-label="在庫表CSVを選ぶ">
+        <div class="file" id="stockInfo">未選択</div>
+      </div>
+    </div>
+    <div class="facts" id="salesFacts"></div>
+  </section>
+
+  <section class="step" aria-labelledby="h3s">
+    <div class="step-head"><span class="step-no">3</span><div><h2 id="h3s">結果を確認して書き出す</h2><p>数量はすべて丸め単位にそろえ、区分ごとの合計は区分比率どおりになります。</p></div></div>
+    <div id="resultArea"><p class="empty">手順2で「スマレジ 商品別売上」と「生産管理表」を取り込むと、ここに計算結果が出ます。</p></div>
+  </section>
+
+  <details class="adv" id="advanced">
+    <summary>商品対応表と計算ルール（引き継ぎ用）</summary>
+    <div class="help sub">
+      <h3>計算のしかた</h3>
+      <ol>
+        <li>総数＝対象月の店舗予算合計×10,000×スクイーズ売上比率÷平均単価（どちらもスマレジCSVから自動計算）。「総数を指定」に入れるとその値を使います。</li>
+        <li>区分目標＝総数×区分比率。</li>
+        <li>自社・自社オープン・IPは、下の対応表の「重み」で配分します。重みの決め方は、実績（スマレジの販売数）・順位（実績を大きい順に並べて指定順位に割り当て。同じ順位は平均）・仮置き（基準品の重み×倍率）・固定の4つです。</li>
+        <li>仕入は、商品マスタで版権が「OEM商品」の商品（対応表にある商品は除く）を、スマレジの販売数の比で配分します。</li>
+        <li>各商品を丸め単位で切り捨て、区分の合計に足りない分を端数の大きい商品から1単位ずつ足します（端数が同じなら上の行から）。</li>
+        <li>在庫判定：出荷できる数（在庫表の店舗仮確保＋残数。残数がマイナスなら差し引く）と比べ、足りれば「可」、足りなければ「不足」。生産管理表の商品は生産で用意するため「生産」と表示し、在庫は参考です。</li>
+        <li>「仕入の不足分を振り替える」をオンにすると、在庫が足りない仕入品は在庫の範囲に抑え、残りを在庫に余裕のある仕入品へ在庫の多い順に配ります。</li>
+        <li>修正版の生産管理表CSVでは、対象月の「店铺」列を置き換え、「合计」列を海外＋EC＋店铺＋国内で計算し直します。</li>
+      </ol>
+      <p class="small">JAN欄：カンマ区切り。「4580805241274*6」で6箱セットを6個として数えます（在庫も同じ倍率）。「#部門名」と書くと、JANが空の行（部門販売など）のうちその部門の数量を足します。</p>
+    </div>
+    <div class="sub">
+      <div class="controls">
+        <label>仮置きの基準品<select id="baseItem"></select></label>
+        <label>丸め単位（自社・IP）<input type="number" id="unitIn" min="1" step="1" style="width:90px"></label>
+        <label>丸め単位（仕入）<input type="number" id="unitBuyIn" min="1" step="1" style="width:90px"></label>
+      </div>
+      <div class="tbl-wrap"><table class="master" id="masterTbl"></table></div>
+      <div class="row-actions"><button type="button" id="addItem">商品を追加</button></div>
+    </div>
+    <div class="sub">
+      <h3>判定ルール</h3>
+      <div class="controls" style="align-items:stretch">
+        <label style="flex:1 1 260px">スクイーズとして数える部門（1行に1つ。末尾*で前方一致）<textarea id="sqDepts"></textarea></label>
+        <label style="flex:1 1 220px">名前に「ぷにっこ」がある行だけ数える部門<textarea id="sqNameDepts"></textarea></label>
+        <label style="flex:1 1 200px">包材とみなすキーワード<textarea id="pkgWords"></textarea></label>
+        <label style="flex:1 1 200px">仕入品とみなす版権（商品マスタ・在庫表）<textarea id="buyRights"></textarea></label>
+        <label style="flex:1 1 200px">在庫表で除外する名前のキーワード<textarea id="exclWords"></textarea></label>
+      </div>
+      <p class="small">スマレジの行は、対応表のJANに当たればスクイーズとして数え、それ以外は部門名で判定します。包材のキーワードに当たる行は売上比率の分母だけに入れます。</p>
+    </div>
+    <div class="row-actions">
+      <button type="button" class="primary" id="saveBtn2">設定を保存</button>
+      <button type="button" id="exportBtn2">設定ファイルを書き出す</button>
+      <button type="button" id="resetBtn">初期値に戻す</button>
+    </div>
+  </details>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>
+"use strict";
+const CATS=["自社","自社オープン","IP","仕入"];
+const CAT_CLASS={"自社":"own","自社オープン":"open","IP":"ip","仕入":"buy"};
+const CAT_VAR={"自社":"--c-own","自社オープン":"--c-open","IP":"--c-ip","仕入":"--c-buy"};
+function ymAdd(ym,n){const [y,m]=ym.split("-").map(Number);const d=new Date(y,m-1+n,1);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")}
+function plan(o){const b={};const ms=["2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"];o.forEach((v,i)=>{if(v!=null)b[ms[i]]=v});return b}
+const DEFAULTS={
+  version:2,
+  ratios:{"自社":65,"自社オープン":5,"IP":15,"仕入":15},
+  startYm:"2026-10",
+  unit:100,
+  unitBuy:100,
+  stockMode:"cwj",
+  redistribute:false,
+  baseItem:"ジュエルキャンディコレクション",
+  stores:[],
+  sqDepts:"自社オリジナルブラインド\n自社オリジナル単品\nIPブラインド\nIP単品\n店舗限定-*\n包材",
+  sqNameDepts:"自社IP\n未登録部門",
+  pkgWords:"ショッパー\n予備袋\nパウダー\nボックス\nBOX\nガイドブック",
+  buyRights:"OEM商品",
+  exclWords:"瑕疵\nテスター",
+  master:[
+    {prod:"舒芙蕾",name:"ふわふわスフレシリーズ",cat:"自社",jan:"4580805241267, 4580805241274*6",m:"順位",v:1,out:false},
+    {prod:"瑞士卷黄油",name:"スイスロール＆バターシリーズ",cat:"自社",jan:"4580805241281, 4580805241298*6, #自社オリジナルブラインド",m:"順位",v:3,out:false},
+    {prod:"豆腐（木棉）",name:"木綿豆腐",cat:"自社",jan:"4580805241250",m:"実績",v:"",out:false},
+    {prod:"豆腐（绢）",name:"絹ごし豆腐",cat:"自社",jan:"4580805241243",m:"実績",v:"",out:false},
+    {prod:"大福",name:"もちもち大福シリーズ",cat:"自社",jan:"4580805241816, 4580805241823*6",m:"順位",v:2,out:false},
+    {prod:"杯子蛋糕",name:"カップケーキシリーズ",cat:"自社",jan:"4580805241984",m:"仮置き",v:1,out:false},
+    {prod:"夢色ふわもこケーキシリーズ",name:"夢色ふわもこケーキシリーズ",cat:"自社",jan:"4580805242004",m:"順位",v:3,out:false},
+    {prod:"カップアイス/杯子冰淇淋",name:"アイスクリームシリーズ",cat:"自社",jan:"4580805241960",m:"仮置き",v:1,out:false},
+    {prod:"宝石糖",name:"ジュエルキャンディコレクション",cat:"自社",jan:"4580805242639",m:"順位",v:4,out:false},
+    {prod:"【008】整块蛋糕（センイルケーキ）",name:"センイルケーキ",cat:"自社",jan:"",m:"仮置き",v:1,out:false},
+    {prod:"【009】海洋生物",name:"海のいきものシリーズ",cat:"自社",jan:"4580805243032",m:"仮置き",v:1,out:false},
+    {prod:"巨大舒芙蕾500g",name:"ふわふわスフレ オリジナル Mサイズ（500g）",cat:"自社オープン",jan:"4580805243148",m:"固定",v:1,out:false},
+    {prod:"巨大舒芙蕾1000g",name:"ふわふわスフレ オリジナル Lサイズ（1000g）",cat:"自社オープン",jan:"4580805243155",m:"固定",v:1,out:false},
+    {prod:"巨大奶酪500g",name:"濃厚バター Mサイズ（500g）",cat:"自社オープン",jan:"4580805243162",m:"固定",v:1,out:false},
+    {prod:"巨大奶酪1000g",name:"濃厚バター Lサイズ（1000g）",cat:"自社オープン",jan:"4580805243179",m:"固定",v:1,out:false},
+    {prod:"蒙奇奇大头（男款）",name:"モンチッチくん",cat:"IP",jan:"4580805241144",m:"実績",v:"",out:false},
+    {prod:"蒙奇奇大头（女款）",name:"モンチッチちゃん",cat:"IP",jan:"4580805241151",m:"実績",v:"",out:false},
+    {prod:"narumiya大头款中村君",name:"ナカムラくん",cat:"IP",jan:"4580805241038",m:"仮置き",v:0.2525,out:false},
+    {prod:"narumiya大头款钢琴兔",name:"ベリエちゃん",cat:"IP",jan:"4580805241045",m:"仮置き",v:0.2525,out:false},
+    {prod:"mezzopiano冰淇淋6款",name:"mezzo piano アイス（6種）",cat:"IP",jan:"",m:"仮置き",v:1,out:false},
+    {prod:"可爱卡薯6款",name:"可爱卡薯（6種）",cat:"IP",jan:"",m:"仮置き",v:1,out:false},
+    {prod:"轻松熊大头（棕熊）",name:"リラックマ",cat:"IP",jan:"4580805241083",m:"実績",v:"",out:false},
+    {prod:"轻松熊大头（白熊）",name:"コリラックマ",cat:"IP",jan:"4580805241090",m:"実績",v:"",out:false},
+    {prod:"mojojojo",name:"ぷにっこ mojojojo",cat:"IP",jan:"4580805241915",m:"仮置き",v:0.7424,out:false},
+    {prod:"ノーベル製菓グミシリーズ",name:"ノーベル製菓 グミシリーズ",cat:"IP",jan:"4580805242943",m:"仮置き",v:1,out:false},
+    {prod:"和菓子シリーズ",name:"和菓子シリーズ",cat:"自社",jan:"",m:"仮置き",v:1,out:false},
+    {prod:"おでんシリーズ",name:"おでんシリーズ",cat:"自社",jan:"",m:"仮置き",v:1,out:false},
+    {prod:"ぷにっこリボンチャームコレクション",name:"ぷにっこ リボンチャームコレクション",cat:"自社",jan:"",m:"仮置き",v:1,out:false},
+    {prod:"マカロン",name:"マカロン",cat:"自社",jan:"",m:"仮置き",v:1,out:false},
+    {prod:"",name:"PUNI-単品（旧WENQIN 5品）",cat:"自社",jan:"4580805241212, 4580805241199, 4580805241205, 4580805241236, 4580805241229",m:"実績",v:"",out:true},
+    {prod:"",name:"ぷにっこ ミルフィー シェイクドロップチーク",cat:"自社",jan:"4580805242219",m:"実績",v:"",out:true},
+    {prod:"",name:"ゆる～いなかまたち",cat:"自社",jan:"4580805241007",m:"仮置き",v:1,out:true},
+    {prod:"",name:"クレープシリーズ",cat:"IP",jan:"4580805241052",m:"仮置き",v:0.2525,out:true}
+  ]
+};
+const LS_KEY="punikko-store-qty-settings-web-v1";
+const clone=o=>JSON.parse(JSON.stringify(o));
+let S=clone(DEFAULTS);
+let dirty=false;
+let SALES=null,PROD=null,MASTER=null,STOCK=null,RESULT=null;
+
+/* ===================== helpers ===================== */
+const $=id=>document.getElementById(id);
+const el=(tag,attrs={},...kids)=>{const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs)){if(k==="class")e.className=v;else if(k==="text")e.textContent=v;else if(k.startsWith("on"))e.addEventListener(k.slice(2),v);else if(v!==undefined&&v!==null&&v!==false)e.setAttribute(k,v===true?"":v)}for(const c of kids){if(c==null)continue;e.append(c.nodeType?c:document.createTextNode(c))}return e};
+const fmt=n=>(n==null||isNaN(n))?"–":Math.round(n).toLocaleString("ja-JP");
+const pct=n=>(n==null||isNaN(n))?"–":(n*100).toFixed(1)+"%";
+const norm=s=>String(s||"").replace(/[\s\u3000\r\n]+/g,"");
+const toNum=s=>{if(s==null)return NaN;const t=String(s).replace(/[,，\s¥￥]/g,"");if(t===""||t==="-")return NaN;return Number(t)};
+function toast(msg){const t=$("toast");t.textContent=msg;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),2600)}
+function months(){return Array.from({length:12},(_,i)=>ymAdd(S.startYm,i))}
+function ymLabel(ym){const [y,m]=ym.split("-");return y+"年"+Number(m)+"月"}
+function lines(s){return String(s||"").split(/\n/).map(x=>x.trim()).filter(Boolean)}
+function markDirty(){dirty=true;renderSaveState()}
+
+/* ===================== CSV ===================== */
+function decode(buf){
+  const u8=new Uint8Array(buf);
+  if(u8[0]===0xEF&&u8[1]===0xBB&&u8[2]===0xBF)return{text:new TextDecoder("utf-8").decode(u8.subarray(3))};
+  try{return{text:new TextDecoder("utf-8",{fatal:true}).decode(u8)}}
+  catch(e){return{text:new TextDecoder("shift_jis").decode(u8)}}
+}
+function parseCSV(text){
+  const rows=[];let row=[],f="",q=false,i=0;const n=text.length;
+  while(i<n){const c=text[i];
+    if(q){if(c==='"'){if(text[i+1]==='"'){f+='"';i+=2;continue}q=false;i++;continue}f+=c;i++;continue}
+    if(c==='"'){q=true;i++;continue}
+    if(c===','){row.push(f);f="";i++;continue}
+    if(c==='\r'){if(text[i+1]==='\n')i++;row.push(f);rows.push(row);row=[];f="";i++;continue}
+    if(c==='\n'){row.push(f);rows.push(row);row=[];f="";i++;continue}
+    f+=c;i++}
+  if(f!==""||row.length){row.push(f);rows.push(row)}
+  return rows;
+}
+function toCSV(rows,eol){return rows.map(r=>r.map(v=>{v=v==null?"":String(v);return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(",")).join(eol)}
+
+/* ===================== Smaregi ===================== */
+function deptMatch(dept,list){return list.some(p=>p.endsWith("*")?dept.startsWith(p.slice(0,-1)):dept===p)}
+function parseJanSpec(spec){
+  return String(spec||"").split(/[,、，\n]/).map(x=>x.trim()).filter(Boolean).map(x=>{
+    if(x.startsWith("#"))return{dept:x.slice(1).trim(),mult:1};
+    const m=x.match(/^([^*×xX]+)(?:\s*[*×xX]\s*(\d+(?:\.\d+)?))?$/);
+    return m?{jan:m[1].trim(),mult:m[2]?Number(m[2]):1}:{jan:x,mult:1}})
+}
+function mappedJans(){const s=new Set();S.master.forEach(it=>parseJanSpec(it.jan).forEach(j=>{if(j.jan)s.add(j.jan)}));return s}
+function analyzeSales(rows,fileName){
+  const h=rows[0].map(x=>x.trim());const ix=n=>h.indexOf(n);
+  const iCode=ix("商品コード"),iName=ix("商品名"),iDept=ix("部門名"),iEx=ix("純売上(税抜)"),iInc=ix("純売上"),iQty=ix("販売点数"),iRet=ix("返品数");
+  if(iCode<0||iName<0||iDept<0||iQty<0)throw new Error("スマレジの商品別売上CSVではないようです（「商品コード」「商品名」「部門名」「販売点数」の列が見つかりません）。");
+  const mj=mappedJans();const sqD=lines(S.sqDepts),sqN=lines(S.sqNameDepts),pkg=lines(S.pkgWords);
+  const byJan={},nameByJan={},byDeptNoJan={};let allEx=0,sqQty=0,sqEx=0;
+  for(const r of rows.slice(1)){
+    const code=(r[iCode]||"").trim();const name=r[iName]||"";const dept=(r[iDept]||"").trim();
+    if(!code&&!name&&!dept)continue;if(code==="合計"||name==="合計")continue;
+    const qty=(toNum(r[iQty])||0)-(iRet>=0?(toNum(r[iRet])||0):0);
+    let ex=iEx>=0?toNum(r[iEx]):NaN;if(isNaN(ex))ex=iInc>=0?(toNum(r[iInc])||0)/1.1:0;
+    allEx+=ex;
+    if(dept==="包材"&&pkg.some(w=>name.includes(w)))continue;
+    const q6=/6箱/.test(name)?qty*6:qty;
+    if(mj.has(code)||deptMatch(dept,sqD)||(deptMatch(dept,sqN)&&name.includes("ぷにっこ"))){sqQty+=q6;sqEx+=ex}
+    if(code){byJan[code]=(byJan[code]||0)+qty;if(name&&name!=="未登録商品")nameByJan[code]=name}else{byDeptNoJan[dept]=(byDeptNoJan[dept]||0)+qty}
+  }
+  const p=(fileName.match(/(\d{8})-(\d{8})/)||[]);const d8=s=>s.replace(/(\d{4})(\d{2})(\d{2})/,"$1/$2/$3");
+  return{byJan,nameByJan,byDeptNoJan,allEx,sqQty,sqEx,avg:sqQty?sqEx/sqQty:NaN,sqRatio:allEx?sqEx/allEx:NaN,period:p[1]?d8(p[1])+"〜"+d8(p[2]):""};
+}
+function actualOf(item){if(!SALES)return 0;let s=0;for(const j of parseJanSpec(item.jan)){s+=j.dept?(SALES.byDeptNoJan[j.dept]||0)*j.mult:(SALES.byJan[j.jan]||0)*j.mult}return s}
+
+/* ===================== production sheet ===================== */
+function analyzeProd(rows){
+  let mRow=-1;for(let r=0;r<Math.min(rows.length,8);r++){if(rows[r].some(c=>/\d{4}年\d{1,2}月/.test(c))){mRow=r;break}}
+  if(mRow<0||!rows[mRow+1])throw new Error("生産管理表の見出し（「2026年12月」のような月の行）が見つかりません。");
+  const sub=rows[mRow+1].map(norm);const marks=[];
+  rows[mRow].forEach((c,i)=>{const m=String(c).match(/(\d{4})年(\d{1,2})月/);if(m)marks.push({col:i,ym:m[1]+"-"+String(m[2]).padStart(2,"0"),label:norm(c)})});
+  const width=Math.max(...rows.map(r=>r.length));
+  const blocks=marks.map((m,k)=>{const end=(k+1<marks.length?marks[k+1].col:width)-1;const cols={};for(let c=m.col;c<=end;c++){if(sub[c])cols[sub[c]]=c}
+    const store=cols["店铺"]??cols["店舗"];const total=cols["合计"]??cols["合計"];const chan=["海外","EC","店铺","店舗","国内"].map(k=>cols[k]).filter(v=>v!=null);
+    return{...m,end,store,total,chan}}).filter(b=>b.store!=null);
+  if(!blocks.length)throw new Error("「店铺」列のある月が見つかりません。");
+  const items=[];for(let r=mRow+2;r<rows.length;r++){const nm=rows[r][0];if(norm(nm))items.push({row:r,raw:nm,key:norm(nm)})}
+  return{rows,mRow,blocks,items};
+}
+
+/* ===================== master & stock ===================== */
+function analyzeMaster(rows){
+  const h=rows[0].map(x=>norm(x).replace(/^\uFEFF/,""));
+  const find=p=>h.findIndex(x=>x.startsWith(p));
+  const iJan=find("JAN"),iRight=find("版権"),iName=find("商品名"),iSku=find("SKU名"),iPrice=find("上代"),iCat=find("カテゴリー");
+  if(iJan<0||iRight<0)throw new Error("商品マスタではないようです（「JAN」「版権」の列が見つかりません）。");
+  const map={};
+  for(const r of rows.slice(1)){const jan=(r[iJan]||"").trim();if(!/^\d{8,14}$/.test(jan)||map[jan])continue;
+    map[jan]={jan,right:(r[iRight]||"").trim(),name:[(r[iName]||"").trim(),(iSku>=0?(r[iSku]||"").trim():"")].filter(Boolean).join(" "),price:iPrice>=0?toNum(r[iPrice]):NaN,cat:iCat>=0?(r[iCat]||"").trim():""}}
+  return{map,count:Object.keys(map).length};
+}
+function analyzeStock(rows){
+  let hr=-1;for(let r=0;r<Math.min(rows.length,20);r++){const t=rows[r].map(x=>norm(x));if(t.includes("商品コード")&&t.includes("現在庫")){hr=r;break}}
+  if(hr<0)throw new Error("在庫表ではないようです（「商品コード」「現在庫」の見出しが見つかりません）。");
+  const t=rows[hr].map(x=>norm(x));const ix=n=>t.indexOf(n);
+  const iCode=ix("商品コード"),iName=ix("商品名"),iRight=ix("版権名"),iH=ix("現在庫"),iJ=ix("残数");
+  let iCW=-1;for(let c=0;c<t.length;c++){if(t[c]==="仮確保"&&norm(rows[hr-1]?.[c])==="店舗"){iCW=c;break}}
+  const excl=lines(S.exclWords);const map={};let n=0;
+  for(const r of rows.slice(hr+1)){const code=(r[iCode]||"").trim();if(!code)continue;const name=(r[iName]||"").trim();if(excl.some(w=>name.includes(w)))continue;
+    const key=code.split("_")[0];const m=map[key]||(map[key]={key,name,right:iRight>=0?(r[iRight]||"").trim():"",H:0,J:0,CW:0});
+    m.H+=toNum(r[iH])||0;m.J+=iJ>=0?(toNum(r[iJ])||0):0;m.CW+=iCW>=0?(toNum(r[iCW])||0):0;n++}
+  return{map,rows:n,hasCW:iCW>=0};
+}
+function availOf(key){
+  if(!STOCK)return NaN;const m=STOCK.map[key];if(!m)return 0;
+  if(S.stockMode==="h")return Math.max(0,m.H);
+  if(S.stockMode==="cw")return Math.max(0,m.CW+Math.min(0,m.J));
+  return Math.max(0,m.CW+Math.min(0,m.J))+Math.max(0,m.J);
+}
+function stockOfItem(item){if(!STOCK)return NaN;let s=0;for(const j of parseJanSpec(item.jan)){if(j.jan)s+=availOf(j.jan)*j.mult}return s}
+function buyItems(){
+  const mj=mappedJans();const rights=lines(S.buyRights);const out=[];
+  if(MASTER){for(const m of Object.values(MASTER.map)){if(rights.some(r=>m.right.includes(r))&&!mj.has(m.jan))out.push({jan:m.jan,name:m.name})}}
+  else if(STOCK){for(const m of Object.values(STOCK.map)){if(rights.some(r=>m.right.includes(r))&&!mj.has(m.key))out.push({jan:m.key,name:m.name})}}
+  return out;
+}
+
+/* ===================== allocation ===================== */
+function computeWeights(){
+  const W={};const rankItems=S.master.filter(it=>it.m==="順位"&&Number(it.v)>0);
+  for(const it of S.master){if(it.m==="実績")W[it.name]={w:actualOf(it),why:"実績 "+fmt(actualOf(it))}}
+  if(rankItems.length){
+    const vals=rankItems.map(actualOf).sort((a,b)=>b-a);const groups={};
+    [...rankItems].sort((a,b)=>Number(a.v)-Number(b.v)).forEach(it=>{(groups[it.v]=groups[it.v]||[]).push(it)});
+    let pos=0;Object.keys(groups).map(Number).sort((a,b)=>a-b).forEach(rk=>{const g=groups[rk];const sl=vals.slice(pos,pos+g.length);const avg=sl.reduce((a,b)=>a+b,0)/g.length;g.forEach(it=>{W[it.name]={w:avg,why:"順位"+rk+"（実績 "+fmt(actualOf(it))+"）"}});pos+=g.length});
+  }
+  const baseW=W[S.baseItem]?W[S.baseItem].w:NaN;
+  for(const it of S.master){if(it.m==="仮置き")W[it.name]={w:(isNaN(baseW)?0:baseW)*(Number(it.v)||0),why:"仮置き 基準×"+(Number(it.v)||0)};if(it.m==="固定")W[it.name]={w:Number(it.v)||0,why:"固定"}}
+  return{W,baseW};
+}
+/* split integer `boxes` over weights by largest remainder (ties: earlier first) */
+function lr(boxes,ws){const sw=ws.reduce((a,b)=>a+b,0);if(sw<=0||boxes<=0)return ws.map(()=>0);
+  const x=ws.map(w=>boxes*w/sw);const f=x.map(Math.floor);let left=boxes-f.reduce((a,b)=>a+b,0);
+  const fr=x.map((v,i)=>Math.round((v-f[i])*1e6)/1e6);const order=fr.map((v,i)=>i).sort((a,b)=>fr[b]-fr[a]||a-b);
+  for(let k=0;k<left;k++)f[order[k]]+=1;return f}
+function calculate(blockIdx,overrideTotal){
+  const warn=[];const blk=PROD.blocks[blockIdx];const unit=Math.max(1,Number(S.unit)||100),unitB=Math.max(1,Number(S.unitBuy)||100);
+  const budget=S.stores.reduce((a,s)=>a+(Number(s.b[blk.ym])||0),0);
+  const autoTotal=budget*10000*SALES.sqRatio/SALES.avg;const total=overrideTotal>0?overrideTotal:autoTotal;
+  if(!budget&&!(overrideTotal>0))warn.push(ymLabel(blk.ym)+"の店舗予算が入っていません。手順1で入力するか、総数を指定してください。");
+  const rs=CATS.reduce((a,c)=>a+(Number(S.ratios[c])||0),0);if(Math.abs(rs-100)>0.001)warn.push("区分比率の合計が"+rs+"%です（100%にしてください）。");
+  const {W,baseW}=computeWeights();if(isNaN(baseW))warn.push("仮置きの基準品「"+S.baseItem+"」の重みが決まりません。基準品は実績か順位の商品を選んでください。");
+  const prodMap={};PROD.items.forEach(x=>{prodMap[x.key]=x});
+  const L=[];const used=new Set();const missing=[];
+  for(const it of S.master){if(!["自社","自社オープン","IP"].includes(it.cat))continue;let pr=null;
+    if(!it.out){pr=prodMap[norm(it.prod)];if(!pr){missing.push(it.name);continue}used.add(pr.row)}
+    const wi=W[it.name]||{w:0,why:"—"};L.push({kind:it.out?"stock":"prod",it,name:it.name,jan:it.jan,pr,w:wi.w,why:wi.why,cat:it.cat,stock:stockOfItem(it)})}
+  const unknown=PROD.items.filter(x=>!used.has(x.row)).map(x=>x.raw.replace(/\s+/g," "));
+  if(missing.length)warn.push("生産管理表に行がない商品（計算から外しています）："+missing.join("、"));
+  if(unknown.length)warn.push("対応表にない生産管理表の行（店铺列はそのまま）："+unknown.join("、"));
+  const targets={};CATS.forEach(c=>targets[c]=total*(Number(S.ratios[c])||0)/100);
+  for(const c of ["自社","自社オープン","IP"]){
+    const G=L.filter(l=>l.cat===c);if(!G.length)continue;const sw=G.reduce((a,l)=>a+l.w,0);
+    if(sw<=0){warn.push(c+"の重みが0です。対応表の重みの決め方を確認してください。");G.forEach(l=>{l.share=0;l.need=0;l.qty=0});continue}
+    G.forEach(l=>{l.share=l.w/sw;l.need=targets[c]*l.share;l.floor=Math.floor(l.need/unit)*unit;l.frac=Math.round((l.need-l.floor)*100)/100});
+    const U=Math.round((targets[c]-G.reduce((a,l)=>a+l.floor,0))/unit);
+    G.forEach((l,i)=>{const rk=G.filter(o=>o.frac>l.frac).length+G.slice(0,i).filter(o=>o.frac===l.frac).length;l.qty=l.floor+(rk<U?unit:0)});
+  }
+  // 仕入
+  const BI=buyItems();let buyUnplaced=0;
+  if(!BI.length&&targets["仕入"]>0)warn.push("仕入品の一覧がありません。商品マスタ（または在庫表）を取り込むと、仕入の商品別の数量と在庫判定が出ます。");
+  if(BI.length){
+    const B=BI.map(b=>({kind:"buy",cat:"仕入",name:b.name,jan:b.jan,w:SALES.byJan[b.jan]||0,stock:STOCK?availOf(b.jan):NaN}));
+    const sw=B.reduce((a,l)=>a+l.w,0);const T=Math.round(targets["仕入"]/unitB);
+    let bx=lr(T,B.map(l=>l.w));
+    if(sw<=0)warn.push("仕入品のスマレジ販売数がありません（JANが一致しません）。");
+    if(S.redistribute&&STOCK){
+      const cap=B.map(l=>Math.floor(Math.max(0,l.stock)/unitB));let ex=0;bx=bx.map((v,i)=>{if(v>cap[i]){ex+=v-cap[i];return cap[i]}return v});
+      let guard=0;while(ex>0&&guard++<50){const sp=cap.map((c,i)=>c-bx[i]);const S_=sp.reduce((a,b)=>a+b,0);if(S_<=0)break;const give=Math.min(ex,S_);const add=lr(give,sp);bx=bx.map((v,i)=>v+add[i]);ex-=give}
+      buyUnplaced=ex*unitB;if(ex>0)warn.push("仕入の在庫が足りず、"+fmt(ex*unitB)+"個を配分できません。");
+    }
+    B.forEach((l,i)=>{l.qty=bx[i]*unitB;l.share=sw>0?l.w/sw:0;l.need=sw>0?targets["仕入"]*l.share:0;l.why=l.w>0?"実績 "+fmt(l.w):"実績なし"});
+    L.push(...B.filter(l=>l.qty>0||l.w>0||(l.stock>0)));
+  }
+  // judgment
+  for(const l of L){
+    if(l.kind==="prod"){l.judge="生産";l.short=0;continue}
+    if(!STOCK||isNaN(l.stock)){l.judge="在庫表なし";l.short=0;continue}
+    l.short=Math.max(0,l.qty-l.stock);l.judge=l.qty<=0?"－":(l.short>0?"不足":"可");
+  }
+  // new production rows
+  const rows=PROD.rows.map(r=>r.slice());
+  for(const l of L){if(!l.pr)continue;const r=rows[l.pr.row];while(r.length<=Math.max(blk.store,blk.total??0))r.push("");
+    l.old=toNum(r[blk.store]);r[blk.store]=String(l.qty);
+    if(blk.total!=null){const s=blk.chan.reduce((a,c)=>{const v=toNum(r[c]);return a+(isNaN(v)?0:v)},0);r[blk.total]=String(s);l.newTotal=s}}
+  return{blk,budget,autoTotal,total,targets,lines:L,rows,warn,unit,unitB,buyUnplaced};
+}
+
+/* ===================== settings UI ===================== */
+function renderRatios(){
+  const bar=$("ratioBar");bar.innerHTML="";const box=$("ratioInputs");box.innerHTML="";
+  CATS.forEach(c=>{
+    const v=Number(S.ratios[c])||0;bar.append(el("div",{class:"ratio-seg seg-"+CAT_CLASS[c]},el("span",{text:c}),el("b",{text:v+"%"})));
+    const inp=el("input",{type:"number",min:"0",max:"100",step:"0.5",value:v,"aria-label":c+"の比率（%）"});
+    inp.addEventListener("input",()=>{S.ratios[c]=Number(inp.value)||0;markDirty();updateRatioBar();recalc()});
+    const sw=el("span",{class:"swatch"});sw.style.background="var("+CAT_VAR[c]+")";
+    box.append(el("label",{},el("span",{class:"key"},sw,c),el("span",{style:"display:flex;align-items:center;gap:6px"},inp,"%")));
+  });updateRatioBar();
+}
+function updateRatioBar(){
+  const tot=CATS.reduce((a,c)=>a+(Number(S.ratios[c])||0),0);
+  [...$("ratioBar").children].forEach((seg,i)=>{const v=Number(S.ratios[CATS[i]])||0;seg.style.flex="0 0 "+(tot?v/tot*100:25)+"%";seg.style.padding=v?"":"0";seg.querySelector("b").textContent=v+"%"});
+  const n=$("ratioSum");const bad=Math.abs(tot-100)>0.001;n.textContent="合計 "+tot+"%"+(bad?"：100%になるように直してください":"");n.className="sum-note"+(bad?" bad":"");
+}
+function renderBudget(){
+  const ms=months();const t=$("budgetTbl");t.innerHTML="";
+  t.append(el("thead",{},el("tr",{},el("th",{text:"店舗名"}),...ms.map((m,i)=>{const [y,mm]=m.split("-");return el("th",{class:"num",text:(i===0||mm==="01"?y.slice(2)+"年":"")+Number(mm)+"月"})}),el("th",{class:"num",text:"年間計"}),el("th"))));
+  const tb=el("tbody");
+  S.stores.forEach((s,si)=>{const tr=el("tr");
+    const nm=el("input",{type:"text",value:s.name,"aria-label":"店舗名"});nm.addEventListener("input",()=>{s.name=nm.value;markDirty()});tr.append(el("td",{},nm));
+    ms.forEach(m=>{const inp=el("input",{type:"number",min:"0",step:"10",value:s.b[m]??"","aria-label":s.name+" "+ymLabel(m)});
+      inp.addEventListener("input",()=>{if(inp.value==="")delete s.b[m];else s.b[m]=Number(inp.value);markDirty();updateBudgetTotals();recalc()});tr.append(el("td",{class:"num"},inp))});
+    tr.append(el("td",{class:"num rowsum"}));
+    tr.append(el("td",{},el("button",{type:"button",class:"link",onclick:()=>{if(confirm("「"+s.name+"」を削除しますか？")){S.stores.splice(si,1);markDirty();renderBudget();recalc()}}},"削除")));tb.append(tr)});
+  if(!S.stores.length)tb.append(el("tr",{},el("td",{colspan:String(ms.length+3),class:"empty",text:"店舗がありません。「設定ファイルを読み込む」で共有された設定を取り込むか、「店舗を追加」で入力してください。"})));
+  t.append(tb);t.append(el("tfoot",{},el("tr",{},el("td",{text:"合計"}),...ms.map(()=>el("td",{class:"num colsum"})),el("td",{class:"num allsum"}),el("td"))));
+  updateBudgetTotals();
+}
+function updateBudgetTotals(){
+  const ms=months();const t=$("budgetTbl");
+  t.querySelectorAll("tbody tr").forEach((tr,si)=>{const s=S.stores[si];if(!s)return;tr.querySelector(".rowsum").textContent=fmt(ms.reduce((a,m)=>a+(Number(s.b[m])||0),0))});
+  const cs=t.querySelectorAll(".colsum");ms.forEach((m,i)=>{cs[i].textContent=fmt(S.stores.reduce((a,s)=>a+(Number(s.b[m])||0),0))});
+  t.querySelector(".allsum").textContent=fmt(S.stores.reduce((a,s)=>a+ms.reduce((b,m)=>b+(Number(s.b[m])||0),0),0));
+}
+function renderMaster(){
+  const t=$("masterTbl");t.innerHTML="";
+  t.append(el("thead",{},el("tr",{},...["生産管理表の品名","表示名","区分","JAN","重みの決め方","順位・倍率・値","生産管理表外",""].map(x=>el("th",{text:x})))));
+  const tb=el("tbody");
+  S.master.forEach((it,i)=>{const tr=el("tr");
+    const f=(key,attrs,cls)=>{const inp=el("input",{type:"text",value:it[key]??"",class:cls||"",...attrs});inp.addEventListener("input",()=>{it[key]=inp.value;markDirty();if(key==="name")renderBaseSelect();recalc()});return inp};
+    const cat=el("select",{"aria-label":"区分"},...["自社","自社オープン","IP","対象外"].map(c=>el("option",{value:c,selected:it.cat===c},c)));cat.addEventListener("change",()=>{it.cat=cat.value;markDirty();recalc()});
+    const m=el("select",{"aria-label":"重みの決め方"},...["実績","順位","仮置き","固定"].map(c=>el("option",{value:c,selected:it.m===c},c)));m.addEventListener("change",()=>{it.m=m.value;markDirty();renderBaseSelect();recalc()});
+    const v=el("input",{type:"number",step:"any",value:it.v??"","aria-label":"順位・倍率・値"});v.addEventListener("input",()=>{it.v=v.value===""?"":Number(v.value);markDirty();recalc()});
+    const out=el("input",{type:"checkbox",checked:!!it.out,"aria-label":"生産管理表外"});out.addEventListener("change",()=>{it.out=out.checked;markDirty();recalc()});
+    tr.append(el("td",{},f("prod",{"aria-label":"生産管理表の品名",placeholder:"表外なら空欄"})),el("td",{},f("name",{"aria-label":"表示名"})),el("td",{},cat),el("td",{},f("jan",{"aria-label":"JAN"},"jan")),el("td",{},m),el("td",{},v),el("td",{style:"text-align:center"},out),
+      el("td",{},el("button",{type:"button",class:"link",onclick:()=>{if(confirm("「"+it.name+"」を対応表から削除しますか？")){S.master.splice(i,1);markDirty();renderMaster();recalc()}}},"削除")));tb.append(tr)});
+  t.append(tb);renderBaseSelect();
+}
+function renderBaseSelect(){const s=$("baseItem");s.innerHTML="";S.master.filter(it=>it.m==="実績"||it.m==="順位").forEach(it=>s.append(el("option",{value:it.name,selected:it.name===S.baseItem},it.name)))}
+function renderRules(){["sqDepts","sqNameDepts","pkgWords","buyRights","exclWords"].forEach(k=>$(k).value=S[k]??"");$("unitIn").value=S.unit;$("unitBuyIn").value=S.unitBuy;$("startYm").value=S.startYm}
+function renderAll(){renderRatios();renderBudget();renderMaster();renderRules();recalc()}
+
+/* ===================== results UI ===================== */
+let blockIdx=0,onlyShort=false;
+function judgeCell(l){const cls=l.judge==="可"?"j-ok":l.judge==="不足"?"j-ng":l.judge==="生産"?"j-prod":"";return el("td",{class:"jcell"},el("span",{class:"judge "+cls,text:l.judge}))}
+function recalc(){
+  const area=$("resultArea");
+  if(!SALES||!PROD){area.innerHTML="";area.append(el("p",{class:"empty",text:!SALES&&!PROD?"手順2で「スマレジ 商品別売上」と「生産管理表」を取り込むと、ここに計算結果が出ます。":(!SALES?"スマレジの商品別売上CSVを取り込んでください。":"生産管理表CSVを取り込んでください。")}));return}
+  if(blockIdx>=PROD.blocks.length)blockIdx=0;
+  const ov=Number(($("overrideTotal")||{}).value)||0;
+  let R;try{R=calculate(blockIdx,ov)}catch(e){area.innerHTML="";area.append(el("div",{class:"msg err",text:"計算できませんでした："+e.message}));return}
+  RESULT=R;area.innerHTML="";
+  const sel=el("select",{id:"blockSel"},...PROD.blocks.map((b,i)=>el("option",{value:i,selected:i===blockIdx},b.label)));sel.addEventListener("change",()=>{blockIdx=Number(sel.value);recalc()});
+  const ovIn=el("input",{type:"number",id:"overrideTotal",min:"0",step:"1000",value:ov?String(ov):"",placeholder:"自動",style:"width:130px"});ovIn.addEventListener("change",recalc);
+  const sm=el("select",{id:"stockMode"},...[["cwj","店舗仮確保＋残数"],["cw","店舗仮確保のみ"],["h","現在庫"]].map(([v,t])=>el("option",{value:v,selected:S.stockMode===v},t)));sm.addEventListener("change",()=>{S.stockMode=sm.value;markDirty();recalc()});
+  const rd=el("input",{type:"checkbox",id:"redist",checked:!!S.redistribute});rd.addEventListener("change",()=>{S.redistribute=rd.checked;markDirty();recalc()});
+  area.append(el("div",{class:"controls"},el("label",{},"対象月（生産管理表）",sel),el("label",{},"総数を指定（任意・個）",ovIn),el("label",{},"在庫の数え方",sm),el("label",{class:"check"},rd,"仕入の不足分を振り替える")));
+  area.append(el("p",{class:"total-line"},"店舗の総数 ",el("b",{text:fmt(R.total)}),"個　",el("span",{class:"small",text:ov?"（指定値。予算からの計算では "+fmt(R.autoTotal)+"個）":"（"+ymLabel(R.blk.ym)+"の予算合計 "+fmt(R.budget)+"万円×スクイーズ比率 "+pct(SALES.sqRatio)+"÷平均単価 "+fmt(SALES.avg)+"円）"})));
+  if(R.warn.length)area.append(el("div",{class:"msg warn"},el("b",{text:"確認してください"}),el("ul",{},...R.warn.map(w=>el("li",{text:w})))));
+  // summary
+  const ct=el("table");
+  ct.append(el("thead",{},el("tr",{},...["区分","比率","目標数","生産管理表（店铺列）","在庫から","合計","在庫不足","変更前（店铺列）"].map((x,i)=>el("th",{class:i?"num":"",text:x})))));
+  const cb=el("tbody");const gt=[0,0,0,0,0,0];
+  CATS.forEach(c=>{const G=R.lines.filter(l=>l.cat===c);const inP=G.filter(l=>l.pr).reduce((a,l)=>a+l.qty,0);const out=G.filter(l=>!l.pr).reduce((a,l)=>a+l.qty,0);
+    const short=G.reduce((a,l)=>a+(l.short||0),0)+(c==="仕入"?R.buyUnplaced:0);const old=G.filter(l=>l.pr).reduce((a,l)=>a+(isNaN(l.old)?0:l.old),0);
+    const sw=el("span",{class:"swatch"});sw.style.background="var("+CAT_VAR[c]+")";
+    cb.append(el("tr",{},el("td",{},el("span",{class:"cat-pill"},sw,c)),el("td",{class:"num",text:(Number(S.ratios[c])||0)+"%"}),el("td",{class:"num",text:fmt(R.targets[c])}),el("td",{class:"num",text:c==="仕入"?"対象外":fmt(inP)}),el("td",{class:"num",text:fmt(out)}),el("td",{class:"num",text:fmt(inP+out)}),el("td",{class:"num "+(short>0?"neg":""),text:STOCK?fmt(short):"–"}),el("td",{class:"num",text:c==="仕入"?"–":fmt(old)})));
+    gt[0]+=R.targets[c];gt[1]+=inP;gt[2]+=out;gt[3]+=inP+out;gt[4]+=short;gt[5]+=old});
+  ct.append(cb);ct.append(el("tfoot",{},el("tr",{},el("td",{text:"合計"}),el("td"),...gt.map((v,i)=>el("td",{class:"num",text:i===4&&!STOCK?"–":fmt(v)})))));
+  area.append(el("div",{class:"tbl-wrap",style:"margin-bottom:20px"},ct));
+  // production table
+  area.append(el("h3",{class:"tbl-title",text:"生産管理表の商品（店铺列）"}));
+  const pt=el("table");pt.append(el("thead",{},el("tr",{},...["区分","商品","生産管理表の品名","重みの根拠","区分内比率","必要数","店铺（新）","店铺（変更前）","増減","合计（新）","在庫（参考）","判定"].map((x,i)=>el("th",{class:i>=4&&i<=10?"num":"",text:x})))));
+  const pb=el("tbody");
+  ["自社","自社オープン","IP"].forEach(c=>R.lines.filter(l=>l.cat===c&&l.kind==="prod").forEach(l=>{const d=!isNaN(l.old)?l.qty-l.old:NaN;
+    pb.append(el("tr",{},el("td",{text:c}),el("td",{text:l.name}),el("td",{text:l.pr.raw.replace(/\s+/g," ")}),el("td",{class:"small",text:l.why}),el("td",{class:"num",text:pct(l.share)}),el("td",{class:"num",text:fmt(l.need)}),el("td",{class:"num"},el("b",{text:fmt(l.qty)})),el("td",{class:"num",text:fmt(l.old)}),el("td",{class:"num "+(d>0?"pos":d<0?"neg":""),text:isNaN(d)?"–":(d>0?"+":"")+fmt(d)}),el("td",{class:"num",text:l.newTotal!=null?fmt(l.newTotal):"–"}),el("td",{class:"num",text:fmt(l.stock)}),judgeCell(l)))}));
+  pt.append(pb);area.append(el("div",{class:"tbl-wrap"},pt));
+  // stock table
+  const SL=R.lines.filter(l=>l.kind!=="prod");
+  const nShort=SL.filter(l=>l.judge==="不足").length;
+  const head=el("div",{class:"tbl-head"},el("h3",{class:"tbl-title",text:"在庫から出す商品（生産管理表外・仕入）"}));
+  const only=el("input",{type:"checkbox",checked:onlyShort});only.addEventListener("change",()=>{onlyShort=only.checked;recalc()});
+  head.append(el("span",{class:"small"},STOCK?("不足 "+nShort+"品目　"):"在庫表を取り込むと判定が出ます　"),el("label",{class:"check small"},only,"不足のみ表示"));
+  area.append(head);
+  const st=el("table");st.append(el("thead",{},el("tr",{},...["区分","商品","JAN","重みの根拠","区分内比率","必要数","配分数","在庫（出荷可能）","不足","判定"].map((x,i)=>el("th",{class:i>=4&&i<=8?"num":"",text:x})))));
+  const sb=el("tbody");
+  const ord=[...SL].sort((a,b)=>(a.cat===b.cat?0:CATS.indexOf(a.cat)-CATS.indexOf(b.cat))||(b.qty-a.qty)||(b.w-a.w));
+  ord.filter(l=>!onlyShort||l.judge==="不足").forEach(l=>{
+    sb.append(el("tr",{},el("td",{text:l.cat}),el("td",{text:l.name}),el("td",{class:"small",text:String(l.jan).length>40?String(l.jan).slice(0,40)+"…":l.jan}),el("td",{class:"small",text:l.why}),el("td",{class:"num",text:pct(l.share)}),el("td",{class:"num",text:fmt(l.need)}),el("td",{class:"num"},el("b",{text:fmt(l.qty)})),el("td",{class:"num",text:fmt(l.stock)}),el("td",{class:"num "+(l.short>0?"neg":""),text:l.short>0?fmt(l.short):"–"}),judgeCell(l)))});
+  if(!sb.children.length)sb.append(el("tr",{},el("td",{colspan:"10",class:"empty",text:onlyShort?"不足の商品はありません。":"対象の商品がありません。"})));
+  st.append(sb);area.append(el("div",{class:"tbl-wrap"},st));
+  area.append(el("div",{class:"row-actions"},
+    el("button",{type:"button",class:"primary",onclick:downloadProd},"修正版の生産管理表CSVを保存"),
+    el("button",{type:"button",onclick:copyStoreCol},"店铺列の数字をコピー"),
+    el("button",{type:"button",onclick:downloadResult},"計算結果をCSVで保存")));
+  area.append(el("p",{class:"small",text:"「店铺列の数字をコピー」は、生産管理表の商品行（"+(PROD.mRow+3)+"行目から）の店铺列に上から貼り付けられる形でコピーします。対応表にない行は元の数字のままです。"}));
+}
+
+/* ===================== outputs ===================== */
+function saveFile(name,data,type){
+  try{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([data],{type}));a.download=name;document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);toast("「"+name+"」を保存しました")}
+  catch(e){toast("ファイルを保存できませんでした")}
+}
+function downloadProd(){if(!RESULT)return;const base=(PROD.fileName||"生産管理表.csv").replace(/\.csv$/i,"");saveFile(base+"_店舗数量修正.csv","\uFEFF"+toCSV(RESULT.rows,PROD.eol)+(PROD.trailing?PROD.eol:""),"text/csv")}
+function downloadResult(){
+  if(!RESULT)return;const R=RESULT;
+  const out=[["対象月",R.blk.label],["総数",Math.round(R.total)],["在庫の数え方",{cwj:"店舗仮確保＋残数",cw:"店舗仮確保のみ",h:"現在庫"}[S.stockMode]],[],["区分","商品","生産管理表の品名","JAN","重みの根拠","区分内比率","必要数","数量","店铺（変更前）","在庫（出荷可能）","不足","判定"]];
+  R.lines.forEach(l=>out.push([l.cat,l.name,l.pr?l.pr.raw.replace(/\s+/g," "):"",l.jan,l.why,((l.share||0)*100).toFixed(2)+"%",Math.round(l.need||0),l.qty,l.pr&&!isNaN(l.old)?l.old:"",isNaN(l.stock)?"":l.stock,l.short||0,l.judge]));
+  saveFile("店舗数量_計算結果_"+R.blk.label+".csv","\uFEFF"+toCSV(out,"\r\n"),"text/csv");
+}
+async function copyStoreCol(){
+  if(!RESULT)return;const R=RESULT;const vals=PROD.items.map(x=>R.rows[x.row][R.blk.store]??"");const text=vals.join("\n");
+  const fallback=()=>{const ta=el("textarea",{readonly:true,"aria-label":"コピー用"});ta.value=text;$("resultArea").append(el("div",{class:"msg warn"},el("p",{text:"自動でコピーできませんでした。下の欄を選んでコピーしてください。"}),ta));ta.focus();ta.select()};
+  try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(text)}else{const ta=el("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.append(ta);ta.select();const ok=document.execCommand("copy");ta.remove();if(!ok)throw new Error("copy")}
+    toast("店铺列の数字をコピーしました（"+vals.length+"行）")}catch(e){fallback()}
+}
+function exportTool(){
+  const payload={...clone(S),savedAt:new Date().toISOString()};
+  const d=new Date();const ds=d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0");
+  saveFile("店舗数量計算ツール_設定_"+ds+".json",JSON.stringify(payload,null,2),"application/json");
+  try{localStorage.setItem(LS_KEY,JSON.stringify(payload))}catch(e){}dirty=false;renderSaveState();
+}
+async function importSettings(file){
+  try{const obj=JSON.parse(new TextDecoder("utf-8").decode(await file.arrayBuffer()));
+    if(!obj||typeof obj!=="object"||!obj.ratios||!Array.isArray(obj.stores)||!Array.isArray(obj.master))throw new Error("このツールの設定ファイルではありません");
+    if(dirty&&!confirm("未保存の変更があります。設定ファイルの内容で置き換えますか？"))return;
+    S=merge(obj);try{localStorage.setItem(LS_KEY,JSON.stringify({...clone(S),savedAt:obj.savedAt||new Date().toISOString()}))}catch(e){}
+    dirty=false;renderAll();renderSaveState();toast("設定ファイルを読み込みました（店舗 "+S.stores.length+"件）");
+  }catch(e){toast("読み込めませんでした："+e.message)}
+}
+
+/* ===================== file inputs ===================== */
+async function load(file,fn,infoId,dropId,okText){
+  try{const d=decode(await file.arrayBuffer());const r=fn(d.text,file.name);$(dropId).classList.add("loaded");$(infoId).textContent=file.name+(okText?"（"+okText(r)+"）":"");return r}
+  catch(err){$(dropId).classList.remove("loaded");$(infoId).textContent="読み込めませんでした："+err.message;return null}
+}
+function bindFile(inputId,handler){$(inputId).addEventListener("change",async e=>{const f=e.target.files[0];if(f)await handler(f);e.target.value="";recalc()})}
+bindFile("fileSales",async f=>{SALES=await load(f,(t,n)=>analyzeSales(parseCSV(t),n),"salesInfo","dropSales",r=>r.period||"取込済み");renderSalesFacts()});
+bindFile("fileProd",async f=>{PROD=await load(f,(t,n)=>{const p=analyzeProd(parseCSV(t));p.fileName=n;p.eol=/\r\n/.test(t)?"\r\n":"\n";p.trailing=/\r?\n$/.test(t);return p},"prodInfo","dropProd",r=>"商品 "+r.items.length+"行、店铺列のある月："+r.blocks.map(b=>b.label).join("・"));blockIdx=0});
+bindFile("fileMaster",async f=>{MASTER=await load(f,t=>analyzeMaster(parseCSV(t)),"masterInfo","dropMaster",r=>r.count+"商品");renderSalesFacts()});
+bindFile("fileStock",async f=>{STOCK=await load(f,t=>analyzeStock(parseCSV(t)),"stockInfo","dropStock",r=>Object.keys(r.map).length+"商品"+(r.hasCW?"":"・店舗仮確保の列なし"));renderSalesFacts()});
+function renderSalesFacts(){const b=$("salesFacts");b.innerHTML="";
+  if(SALES)b.append(el("span",{},"スクイーズ販売数 ",el("b",{text:fmt(SALES.sqQty)}),"個"),el("span",{},"平均単価（税抜） ",el("b",{text:fmt(SALES.avg)}),"円"),el("span",{},"スクイーズ売上比率 ",el("b",{text:pct(SALES.sqRatio)})));
+  if(MASTER||STOCK)b.append(el("span",{},"仕入品 ",el("b",{text:fmt(buyItems().length)}),"品目"));}
+document.querySelectorAll(".drop").forEach(d=>{d.addEventListener("dragover",()=>d.classList.add("over"));["dragleave","drop"].forEach(ev=>d.addEventListener(ev,()=>d.classList.remove("over")))});
+
+/* ===================== settings controls ===================== */
+$("startYm").addEventListener("change",e=>{if(/^\d{4}-\d{2}$/.test(e.target.value)){S.startYm=e.target.value;markDirty();renderBudget();recalc()}});
+$("addStore").addEventListener("click",()=>{S.stores.push({name:"新しい店舗",b:{}});markDirty();renderBudget();const ins=$("budgetTbl").querySelectorAll("tbody tr:last-child input[type=text]");if(ins[0]){ins[0].focus();ins[0].select()}});
+$("addItem").addEventListener("click",()=>{S.master.push({prod:"",name:"新しい商品",cat:"自社",jan:"",m:"仮置き",v:1,out:false});markDirty();renderMaster();recalc()});
+$("baseItem").addEventListener("change",e=>{S.baseItem=e.target.value;markDirty();recalc()});
+$("unitIn").addEventListener("input",e=>{S.unit=Number(e.target.value)||100;markDirty();recalc()});
+$("unitBuyIn").addEventListener("input",e=>{S.unitBuy=Number(e.target.value)||100;markDirty();recalc()});
+["sqDepts","sqNameDepts","pkgWords","buyRights","exclWords"].forEach(k=>$(k).addEventListener("change",e=>{S[k]=e.target.value;markDirty();toast("ルールを変えました。CSVを取り込み直すと反映されます")}));
+$("resetBtn").addEventListener("click",()=>{if(confirm("すべての設定を初期値に戻しますか？")){S=clone(DEFAULTS);markDirty();renderAll()}});
+$("saveBtn").addEventListener("click",saveSettings);$("saveBtn2").addEventListener("click",saveSettings);
+$("exportBtn").addEventListener("click",exportTool);$("exportBtn2").addEventListener("click",exportTool);
+$("importBtn").addEventListener("click",()=>$("importFile").click());
+$("importFile").addEventListener("change",async e=>{const f=e.target.files[0];if(f)await importSettings(f);e.target.value=""});
+window.addEventListener("beforeunload",e=>{if(dirty){e.preventDefault();e.returnValue=""}});
+
+/* ===================== persistence ===================== */
+function renderSaveState(){const dot=$("saveDot"),st=$("saveState");if(dirty){dot.className="dot warn";st.textContent="未保存の変更があります"}else{dot.className="dot ok";st.textContent=S.stores.length?"このブラウザに保存済み":"設定ファイルを読み込んでください"}}
+function merge(saved){const s=clone(DEFAULTS);if(!saved||typeof saved!=="object")return s;for(const k of Object.keys(s)){if(saved[k]!==undefined)s[k]=saved[k]}return s}
+function saveSettings(){const payload={...clone(S),savedAt:new Date().toISOString()};try{localStorage.setItem(LS_KEY,JSON.stringify(payload));dirty=false;renderSaveState();toast("設定を保存しました")}catch(e){toast("このブラウザでは保存できません。「設定ファイルを書き出す」で保存してください")}}
+function init(){
+  let loc=null;try{const t=localStorage.getItem(LS_KEY);if(t)loc=JSON.parse(t)}catch(e){}
+  S=merge(loc);dirty=false;renderAll();renderSaveState();
+}
+init();
+</script>
+</body>
+</html>
